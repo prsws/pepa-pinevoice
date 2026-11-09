@@ -2,7 +2,7 @@
 
 Putting the **Oye Pepa!** wake word on a Pine64 **PineVoice** smart speaker, and keeping the record of how the unit behaves as a Pepa voice satellite.
 
-Status (2026-11-09): PineVoice is on prod HA as a Wyoming satellite and answers the hardware button. The on-device wake word is stock "Hey Jarvis" only. Nothing in this repo has been run yet.
+Status (2026-11-09): PineVoice is on prod HA as a Wyoming satellite and answers the hardware button. The on-device wake word is stock "Hey Jarvis" only. A rollback image exists (two identical full dumps of the stock flash, 2026-11-09) and the Oye Pepa! image is built. Nothing has been flashed yet.
 
 ## What this repo is
 
@@ -18,6 +18,7 @@ The wake-word model is **not compiled into the firmware**. The C906 core opens `
 scripts/fetch-model.sh                # models/oye_pepa.{json,tflite} from ai-for-aging.org, checks the 4 required fields
 scripts/prepare.sh                    # pinned SDK -> vendor/, stock model backed up, Oye Pepa! put in the hey_jarvis slot
 scripts/build.sh                      # Docker (linux/amd64) -> generated/littlefs.bin + firmware zip
+scripts/dump-flash.sh                 # READ-ONLY full 16 MiB dump = rollback image. Do this BEFORE flashing
 PORT=/dev/ttyACM0 scripts/flash.sh    # x86-64 Linux host with the unit on USB; see the script header
 scripts/restore-stock.sh              # back to Hey Jarvis (then build + flash again)
 ```
@@ -29,11 +30,12 @@ Options: `fetch-model.sh --cutoff 0.95` lowers the detection threshold in the fl
 - **Where to flash from.** The Bouffalo flash tool in the SDK is `bflb_iot_tool-ubuntu`, a Linux binary, and the YoC build also calls it. Build and flash on an x86-64 Linux host. Docker Desktop on a Mac cannot pass the USB serial port through. Not verified: whether Bouffalo's macOS Dev Cube could write only the media partition (offset `0xEE8000`, size `0xB8000`) from `littlefs.bin`.
 - **Bootloader mode.** Power off, hold the center ring button, power on, start the flash within seconds.
 - **`full` matters.** `flash.sh` without `full` flashes firmware only, so the model would not change. `scripts/flash.sh` always passes it.
+- **Take the rollback image first.** `scripts/dump-flash.sh` reads the whole 16 MiB flash (0x000000-0xFFFFFF) to `~/pinevoice-backup/pinevoice-full-<timestamp>.bin` plus a `.sha256`, and keeps it only if it is exactly 16,777,216 bytes. It writes nothing to the unit. Take two dumps (bootloader mode again in between) and compare the hashes. Done on 2026-11-09: both matched (see docs/bench-log.md). The image can contain Wi-Fi credentials: it lives outside the repo and `.gitignore` also excludes `backups/` and `*.bin`. `restore-stock.sh` only restores the stock model file in the build tree; it is not the same as rolling the unit back from the dump. Writing the dump back to the unit has not been tried (see docs/how-it-works.md, "Reading the flash").
 - **Guest room.** The unit is slated for the guest room next week. Flashing takes it offline, so do this first, and keep `restore-stock.sh` ready.
 
 ## Unknowns
 
-- Model size is unknown (workspace could not download it). Media partition is 753,664 bytes; stock files use about 110 KB.
+- Model size: `oye_pepa.tflite` is 137,984 bytes (stock Jarvis: 52,272). Media partition is 753,664 bytes and the built `littlefs.bin` fills exactly that size, with the model inside (see docs/how-it-works.md, "Checking the built image").
 - `tensor_arena_size` is 30000 for Oye Pepa! vs 22860 for Jarvis. Probably fits the C906; not checked. If the model fails to load, the serial console prints `fopen failed`, `Failed to init model: N`, or similar (see `alg_dummy.c`).
 - Cutoff 0.99 is strict. The July deployment record already treats false-rejects as the real problem. Lower it here with `--cutoff`; no retrain needed.
 - Licensing and provenance of the trained model are still open in the Notion deployment record.
@@ -41,7 +43,7 @@ Options: `fetch-model.sh --cutoff 0.95` lowers the detection threshold in the fl
 ## Layout
 
 ```
-scripts/   fetch-model, prepare, build, flash, restore-stock
+scripts/   fetch-model, prepare, build, dump-flash, flash, restore-stock
 patches/   optional patches against the SDK submodules (verified to apply to the pinned commits)
 models/    downloaded model + stock backup (gitignored)
 docs/      how-it-works.md, bench-log.md (append-only)

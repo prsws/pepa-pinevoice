@@ -3,3 +3,5 @@ vendor/
 models/*
 !models/.gitkeep
 *.zip
+backups/
+*.bin

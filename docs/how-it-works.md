@@ -35,12 +35,36 @@ The BL606P has 32 MiB pSRAM, 16 MiB flash. The C906 reads mic PCM from the E907 
 - Picks `PV_TTY` as the first `/dev/tty*` character device, so pin the port yourself (`scripts/flash.sh` does).
 - Uses `tools/flashtool/bflb_iot_tool-ubuntu` (Linux x86-64).
 
+## Reading the flash (rollback image)
+
+Verified on 2026-11-09 with a 4 KB read-only test. The full dump itself is covered by `scripts/dump-flash.sh`; its result goes in `bench-log.md`.
+
+- Bootloader mode shows up on the host as USB `ffff:ffff CherryUSB CherryUSB_CDC_DEMO` (serial `2022123456`), i.e. `/dev/ttyACM0`. A power-only cable shows nothing at all; use a data cable.
+- Command: `bflb_iot_tool-ubuntu --chipname=bl606p --interface=uart --port=/dev/ttyACM0 --baudrate=2000000 --read --start=0x0 --end=0xFFF`, run from `tools/flashtool/` after copying `boards/bl606p_pinevoice_e907/configs/eflash_loader_cfg.ini` into `chips/bl606p/eflash_loader/`.
+- The handshake reports MAC `222222222222` (looks like a placeholder; not checked against other units, so do not treat it as an identity), flash JEDEC id `ef601880`, size `0x01000000`.
+- **`--outdir` does not control where the data goes.** The tool writes `./flash.bin` in its current directory and uses `--outdir` only for generated config files. `scripts/dump-flash.sh` runs it in the flashtool folder and moves the result.
+- **`--end` is inclusive.** `--start=0x0 --end=0xFFF` returned exactly 4096 bytes. The full range is `--end=0xFFFFFF` (16,777,216 bytes).
+- The first 4 KB begins `BFNP` / `FCFG` / `PCFG`, the Bouffalo boot header, so the read returns real flash content.
+- The tool **resets the CPU after every read** and then logs `Error: [Errno 5] Input/output error`. Exit code is 0 and it prints `[All Success]`, so the error is cosmetic. Every new attempt needs bootloader mode again (power off, hold center button, power on). The port may still be listed by the host after the reset; do not use "port exists" as proof that the unit is in bootloader mode.
+- The dump can contain Wi-Fi credentials and per-unit data. Keep it out of git.
+- **Not verified:** writing a dump back. The same tool has `--single`, `--addr` and `--firmware`/`--media`/`--mfg` options, but a full-image restore has not been tried. Until it is, the dump protects the data, not the procedure. Reflashing via the SDK (`flash.sh ... full`) from a stock build is the other way back.
+
+## Checking the built image
+
+`generated/littlefs.bin` (753,664 bytes) is the media partition image. A proper unpack needs a littlefs reader (for example the `littlefs-python` package with block size 4096, 184 blocks); mm2010 had no pip when this was written, so that check has not been done.
+
+What was done instead, on 2026-11-09:
+
+- `data/mnt/hey_jarvis.tflite` is byte-identical to `models/oye_pepa.tflite`, and `data/mnt/hey_jarvis.json` holds the Oye Pepa! manifest (cutoff 0.99, window 5, step 10, arena 30000).
+- The 388-byte JSON appears whole inside `littlefs.bin`.
+- littlefs stores big files in 4096-byte blocks with a few pointer bytes at the start of each, so the `.tflite` is not contiguous in the image. Sampling 64-byte windows of the model every 500 bytes found 272 of 275 in the image. The stock Jarvis model matched 22 of 104, which I read as bytes shared between the two models, not as Jarvis being present. This is evidence, not proof; the boot log is the real test.
+
 ## Upstream status
 
 Pine64's software page says future firmware updates are expected to support custom MicroWakeWord-compatible models and that a PineVoice-specific model is planned. Until then this repo hand-swaps the files. Open issues on the SDK repo as of 2026-11-09: #2 (chime on wake word), #4 (AGC on mics), #5 (build without VS Code).
 
 ## Not verified
 
-- Anything about how the loaded model performs. Nothing has been built or flashed.
+- Anything about how the loaded model performs. The image is built but nothing has been flashed.
 - Whether the C906 has memory for a 30000-byte arena plus the model buffer. Jarvis needs 22860.
 - Whether the unit's mute button cuts the mic electrically.
