@@ -20,7 +20,7 @@ done
 mkdir -p "$OUT"
 curl -fsSL "$BASE/oye_pepa.json"   -o "$OUT/oye_pepa.json"
 curl -fsSL "$BASE/oye_pepa.tflite" -o "$OUT/oye_pepa.tflite"
-cp -n "$OUT/oye_pepa.json" "$OUT/oye_pepa.upstream.json" || true
+[ -f "$OUT/oye_pepa.upstream.json" ] || cp "$OUT/oye_pepa.json" "$OUT/oye_pepa.upstream.json"
 
 python3 - "$OUT/oye_pepa.json" "$CUTOFF" <<'PY'
 import json, sys
