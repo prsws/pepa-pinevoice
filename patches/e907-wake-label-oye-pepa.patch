@@ -1,0 +1,11 @@
+--- a/app/src/wyoming/wyoming.c	2026-11-09 13:31:30.367713633 -0400
++++ b/app/src/wyoming/wyoming.c	2026-11-09 13:31:30.368985287 -0400
+@@ -62,7 +62,7 @@
+     NULL,
+     false,
+   },
+-  "hey jarvis"
++  "oye pepa"
+ };
+ 
+ static void mic_streamer_fn(void *arg)

@@ -1,0 +1,20 @@
+--- a/app/dummy/alg_dummy.c	2026-11-09 13:31:30.379030649 -0400
++++ b/app/dummy/alg_dummy.c	2026-11-09 13:31:30.380220653 -0400
+@@ -90,7 +90,7 @@
+ static int32_t load_model_json(struct model_params_t* params)
+ {
+     printf("Trying to open json...\n");
+-    FILE *fp = fopen("/mnt/hey_jarvis.json", "rb");
++    FILE *fp = fopen("/mnt/oye_pepa.json", "rb");
+     if (!fp) {
+         printf("fopen failed\n");
+         return 1;
+@@ -168,7 +168,7 @@
+ {
+     *buf = NULL;
+ 
+-    FILE *fp = fopen("/mnt/hey_jarvis.tflite", "rb");
++    FILE *fp = fopen("/mnt/oye_pepa.tflite", "rb");
+     if (!fp) {
+         printf("fopen failed\n");
+         return -1;
