@@ -74,3 +74,13 @@ Nothing flashed yet.
 **Upstream.** SDK issue #2: other owners say the wake word works for them (LEDs react). Issue #4: mic gain is a fixed 27 dB in `boards/bl606p_pinevoice_e907/src/audio/board_audio.h`; the maintainer says there is AGC inside the wake-word processing only. No issue mentions a unit that never wakes or the `_aui_recv` warning.
 
 **Reading.** Not the Oye Pepa model and not the HA configuration. Leading suspects: this unit's audio capture path (the full ring buffer), or neither model reaching threshold on this unit's mics. Not proven.
+
+## 2026-11-10: why Oye Pepa! never loaded
+
+**Finding.** The PineVoice firmware mallocs exactly `micro.tensor_arena_size` and does not retry. Oye Pepa! needs at least 42,896 bytes; the manifest from ai-for-aging.org says 30000. So the model failed to load on every flash on 2026-11-09 (cutoff 0.97 and 0.5 alike), and those tests say nothing about sensitivity. ESPHome grows the arena itself, which is why the same manifest works on the other satellites.
+
+**How it was measured.** The SDK's `tflite_micro` and the firmware's load path, rebuilt on a 64-bit host (`tools/arena-probe`, `scripts/probe-arena.sh`). The model was read with its weights zeroed, which does not change the memory plan; its hash matched the flashed file (`3bc32c76…`). Stock Hey Jarvis: minimum 19,392 against its manifest's 22,860, so Jarvis does load. Details in docs/how-it-works.md, "Tensor arena".
+
+**Change.** `fetch-model.sh` now writes 48000 (minimum + about 10%) into the flashed copy, from `config/arena.tsv`.
+
+**Still open.** Stock Hey Jarvis never woke this unit either, with an arena that fits. That is a separate problem and is tracked separately. Not verified on the device: C906 heap headroom for the bigger arena and model, and inference time.
