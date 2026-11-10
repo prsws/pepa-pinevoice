@@ -23,7 +23,7 @@ PORT=/dev/ttyACM0 scripts/flash.sh    # x86-64 Linux host with the unit on USB; 
 scripts/restore-stock.sh              # back to Hey Jarvis (then build + flash again)
 ```
 
-Options: `fetch-model.sh --cutoff 0.95` lowers the detection threshold in the flashed copy. `prepare.sh --rename` patches the C906 loader to use `oye_pepa.*` filenames instead of hijacking the Jarvis slot. `prepare.sh --label` patches `wyoming.c` so the satellite advertises "oye pepa". Start without either.
+Options: `fetch-model.sh --cutoff 0.95` lowers the detection threshold in the flashed copy. `fetch-model.sh` also sets the tensor arena from `config/arena.tsv` (48000 for Oye Pepa!; the upstream manifest's 30000 is too small for this firmware), and `--arena N` overrides it. For a model not in that table, run `scripts/probe-arena.sh` after `prepare.sh` to measure it. `prepare.sh --rename` patches the C906 loader to use `oye_pepa.*` filenames instead of hijacking the Jarvis slot. `prepare.sh --label` patches `wyoming.c` so the satellite advertises "oye pepa". Start without either.
 
 ## Before flashing
 
@@ -36,14 +36,16 @@ Options: `fetch-model.sh --cutoff 0.95` lowers the detection threshold in the fl
 ## Unknowns
 
 - Model size: `oye_pepa.tflite` is 137,984 bytes (stock Jarvis: 52,272). Media partition is 753,664 bytes and the built `littlefs.bin` fills exactly that size, with the model inside (see docs/how-it-works.md, "Checking the built image").
-- `tensor_arena_size` is 30000 for Oye Pepa! vs 22860 for Jarvis. Probably fits the C906; not checked. If the model fails to load, the serial console prints `fopen failed`, `Failed to init model: N`, or similar (see `alg_dummy.c`).
+- `tensor_arena_size`: the upstream 30000 is too small (measured minimum 42,896 bytes), so the PineVoice cannot load the model with it; `fetch-model.sh` writes 48000. Not checked: whether the C906 heap has room for it plus the 138 KB model buffer. A load failure shows on the C906 console as `Failed to init model: -2` (see docs/how-it-works.md, "Tensor arena").
 - Cutoff 0.99 is strict. The July deployment record already treats false-rejects as the real problem. Lower it here with `--cutoff`; no retrain needed.
 - Licensing and provenance of the trained model are still open in the Notion deployment record.
 
 ## Layout
 
 ```
-scripts/   fetch-model, prepare, build, dump-flash, flash, restore-stock
+scripts/   fetch-model, prepare, probe-arena, build, dump-flash, flash, restore-stock
+config/    arena.tsv: measured tensor arena per model (sha256)
+tools/     arena-probe: loads a model the way the C906 firmware does and finds its minimum arena
 patches/   optional patches against the SDK submodules (verified to apply to the pinned commits)
 models/    downloaded model + stock backup (gitignored)
 docs/      how-it-works.md, bench-log.md (append-only)

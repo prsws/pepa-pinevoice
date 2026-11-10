@@ -22,6 +22,27 @@ The BL606P has 32 MiB pSRAM, 16 MiB flash. The C906 reads mic PCM from the E907 
 
 `solutions/pinevoice_fw_e907/data/mnt/` currently holds `hey_jarvis.{json,tflite}` (52,272 bytes, Apache 2.0 from linux-voice-assistant per the LICENSES file), five `.opus` tones (wifi provisioning, wifi disconnected, `wsat-is-disconnected`), and `LICENSES`.
 
+## Tensor arena
+
+The arena is the working memory TFLite Micro needs to run the model. Getting its size wrong is the one manifest error that fails silently on this device.
+
+- `alg_dummy.c` passes `micro.tensor_arena_size` to `mww_streaming_model_init()`. `StreamingModel::load()` (`components/microwakeword/src/mww_streaming_model.cpp`) mallocs exactly that many bytes. There is no probing and no retry.
+- If it is too small, `AllocateTensors()` fails. The C906 console prints `Failed to init model: -2` and `Ret3: -3`, and wake-word detection stays off until the next boot. The E907 is never told, and the center button still works.
+- Current ESPHome (`micro_wake_word/streaming_model.cpp` on the dev branch, read 2026-11-10) tries the manifest size, then 1.5x and 2x, and then shrinks to what the model really uses. A manifest that is too small therefore works on ESPHome devices and fails here. Whether the ESPHome builds on the Satellite1 and Voice PE include that probe was not checked.
+
+Measured with `scripts/probe-arena.sh` (the SDK's own `tflite_micro`, the same 20 ops, variable arena and checks as the firmware, built on a 64-bit host):
+
+| Model | Size | Minimum arena | Manifest value | Flashed value |
+|---|---|---|---|---|
+| Oye Pepa! v2 (`3bc32c76…`) | 137,984 | 42,896 | 30,000 | 48,000 |
+| Hey Jarvis (stock, `21a7976a…`) | 52,272 | 19,392 | 22,860 | 22,860 |
+
+`config/arena.tsv` holds these numbers. `scripts/fetch-model.sh` writes the "flashed" value into the copy that gets built and refuses an `--arena` below the minimum.
+
+- **Why Oye Pepa! needs more.** It is the Okay Nabu network layout with the filter counts doubled (64/128 instead of 32/64). It also runs every 20 ms (2 feature slices per inference) instead of every 30 ms. That gives about 81k weights against 21.6k for Jarvis. The size comes from the training configuration, not from the length of the phrase.
+- **Use a 64-bit host.** The C906 is RV64. A 32-bit build of the probe needs less (38,852 bytes for Oye Pepa!) because pointers are smaller, and would undercount.
+- **Not verified on the device.** Whether the C906 heap has room for the 48 KB arena plus the 138 KB model buffer (the C906 image is linked into a 4 MiB pSRAM region, `boards/bl606p_pinevoice_c906/gcc_flash_c906.ld`). How long one inference takes on the C906. On the host it is about 3.5x Jarvis per inference, and about 5x per second of audio because it also runs more often.
+
 ## The Wyoming side
 
 `solutions/pinevoice_fw_e907/app/src/wyoming/wyoming.c:57-66` declares a `wsat_wake` component with the name string `"hey jarvis"`, registered via `wsat_wake_set(&wake)`. This is what the satellite advertises to HA. Whether HA does anything with it was not checked. Detection itself triggers `wsat_wake_detection()` (line 29), same call the center button makes (`app_key_msg.c:114`).
@@ -65,6 +86,6 @@ Pine64's software page says future firmware updates are expected to support cust
 
 ## Not verified
 
-- Anything about how the loaded model performs. The image is built but nothing has been flashed.
-- Whether the C906 has memory for a 30000-byte arena plus the model buffer. Jarvis needs 22860.
+- Anything about how the loaded model performs. The model has never loaded on the unit: the 2026-11-09 flashes used the too-small arena (see docs/bench-log.md, 2026-11-10).
+- Whether the C906 heap has room for the 48,000-byte arena plus the 137,984-byte model buffer (see "Tensor arena"). The manifest's 30000 is too small; that part is measured.
 - Whether the unit's mute button cuts the mic electrically.
