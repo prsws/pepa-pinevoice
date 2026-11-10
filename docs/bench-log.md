@@ -56,3 +56,21 @@ José chose 0.97 (between the trained 0.99 and the 0.95 I suggested). Done with 
 - `fetch-model.sh --cutoff` rewrites the manifest with `json.dumps`, so the `author` field now holds `\u00e9` escapes instead of a literal e-acute and the file is indented. The loader only reads the four numeric `micro` fields, so this should not matter; the boot log will confirm.
 
 Nothing flashed yet.
+
+## 2026-11-09 20:04-20:49: flashed, wake word never fires
+
+**Flash 1, 20:06 (cutoff 0.97).** Firmware, partition table, mfg and media written and each verified on the device (media sha256 `1522d4c6...`). The unit rebooted, rejoined Wi-Fi by itself (no reprovisioning), answered ping, port 10700 open, `assist_satellite.pinevoice` idle. José: 5 attempts at "Oye Pepa" with simple commands, no response of any kind. HA logbook: nothing.
+
+**Button check, 20:19.** Center button still starts a full pipeline (listening, processing, responding, idle in HA). The flash did not break the speech path.
+
+**Flash 2, 20:21 (probe, cutoff 0.5).** Only `littlefs.bin` regenerated (`product lfs` in the SDK container: seconds instead of a 19-minute rebuild); media sha256 `9c2f0352...` verified. Still no trigger of any kind; HA shows only the button session.
+
+**Key fact from José.** Stock "Hey Jarvis" never worked either, on the factory firmware, right after unboxing. The HA device page has no wake-word section; that is expected for a Wyoming satellite that detects on the device (Satellite1 and Voice PE expose wake-word selects because they run ESPHome). In `wyoming.c` a detection either starts a pipeline (HA logbook shows listening) or, if HA is not connected, plays `wsat-is-disconnected.opus`. Neither happened, so the device is not detecting anything. Some other `wsat_wake_detection()` errors would be silent; not ruled out.
+
+**Stock-Jarvis reflash: prepared, then dropped.** `restore-stock.sh` plus an lfs repack put the stock files back in the image (103/104 sampled windows), and a flash watcher was armed at 20:26. Disarmed at 20:41 without flashing, because Jarvis is already known to fail on this unit. The unit is still on the 0.5 Oye Pepa image; the build tree now holds the stock model. Gotcha: `pkill -f <script>` run over the remote shell also kills that shell when its own command line contains the script name.
+
+**Console, 20:41-20:45.** 200 s capture of the USB console (2,000,000 baud) while José said "Oye Pepa", "Hey Jarvis", talked, and pressed the button. The log is flooded and garbled by one warning repeated continuously: `codec_input.c _aui_recv 133`. That is the `MSP_LOGW` in `components/multimedia/xcodec/src/bl606p/codec/codec_input.c` when `mringbuffer_put_index()` returns <= 0, i.e. a mic capture ring buffer is full and nobody is draining it. It also appears in both post-flash boot captures, within the first ~15 KB. No "WAKE UP!!!" line even for the button press, so debug logs are off (package.sh comments out CONFIG_DEBUG) or lost in the flood. Not known whether the factory firmware shows the same warning; its console was never captured.
+
+**Upstream.** SDK issue #2: other owners say the wake word works for them (LEDs react). Issue #4: mic gain is a fixed 27 dB in `boards/bl606p_pinevoice_e907/src/audio/board_audio.h`; the maintainer says there is AGC inside the wake-word processing only. No issue mentions a unit that never wakes or the `_aui_recv` warning.
+
+**Reading.** Not the Oye Pepa model and not the HA configuration. Leading suspects: this unit's audio capture path (the full ring buffer), or neither model reaching threshold on this unit's mics. Not proven.
